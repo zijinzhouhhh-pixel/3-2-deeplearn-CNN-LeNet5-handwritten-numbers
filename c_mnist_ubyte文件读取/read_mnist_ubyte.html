@@ -1,0 +1,955 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MNIST IDX / ubyte 文件读取器</title>
+
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f5f7fb;
+  --panel: #fff;
+  --text: #182230;
+  --muted: #667085;
+  --line: #e4e7ec;
+  --accent: #2563eb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, "Microsoft YaHei", system-ui, sans-serif;
+}
+
+.wrap {
+  max-width: 1100px;
+  margin: 36px auto;
+  padding: 0 20px 48px;
+}
+
+header {
+  margin-bottom: 24px;
+}
+
+h1 {
+  font-size: 26px;
+  margin: 0 0 8px;
+}
+
+p {
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 6px 0;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 22px;
+  margin: 16px 0;
+  box-shadow: 0 4px 18px #1018280a;
+}
+
+.uploads {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.drop {
+  border: 1px dashed #98a2b3;
+  border-radius: 12px;
+  padding: 18px;
+  background: #fbfcfe;
+}
+
+.drop label {
+  display: block;
+  font-weight: 650;
+  margin-bottom: 10px;
+}
+
+input[type=file] {
+  width: 100%;
+  font-size: 14px;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.status {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f2f4f7;
+  color: #475467;
+  font-size: 14px;
+}
+
+.status.ok {
+  background: #ecfdf3;
+  color: #027a48;
+}
+
+.status.err {
+  background: #fef3f2;
+  color: #b42318;
+}
+
+.viewer {
+  display: grid;
+  grid-template-columns: minmax(250px, 340px) 1fr;
+  gap: 26px;
+  align-items: start;
+}
+
+.imagebox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+canvas {
+  width: min(100%, 280px);
+  height: auto;
+  image-rendering: pixelated;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #111;
+}
+
+.digit-label {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+button {
+  border: 0;
+  border-radius: 9px;
+  background: var(--accent);
+  color: white;
+  padding: 10px 15px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button.secondary {
+  background: #eef2ff;
+  color: #3446a5;
+}
+
+button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+input[type=number] {
+  width: 100px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+input[type=range] {
+  width: min(100%, 420px);
+  accent-color: var(--accent);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.stat {
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 10px;
+}
+
+.stat b {
+  display: block;
+  font-size: 20px;
+  margin-top: 4px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* 矩阵标题和右上角按钮 */
+.matrix-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.matrix-heading h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.matrix-toggle {
+  flex-shrink: 0;
+}
+
+/* 矩阵容器 */
+.matrix-wrap {
+  width: min(100%, 560px);
+  margin: 12px auto 0;
+}
+
+/* 28×28 矩阵，严格保持正方形 */
+.matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(28, minmax(0, 1fr));
+  grid-template-rows: repeat(28, minmax(0, 1fr));
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 1px solid #cfd4dc;
+  overflow: hidden;
+}
+
+/* 每个像素格由网格自动分配相同宽高 */
+.pixel-cell {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid #d9dde4;
+  font-family: ui-monospace, monospace;
+  font-size: clamp(4px, 1.05vw, 10px);
+  line-height: 1;
+  padding: 0;
+  white-space: nowrap;
+}
+
+/* 隐藏底色时统一使用白底 */
+.pixel-cell.no-bg {
+  background: #fff !important;
+  color: #182230 !important;
+}
+
+@media(max-width: 700px) {
+  .uploads,
+  .viewer {
+    grid-template-columns: 1fr;
+  }
+
+  .stats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pixel-cell {
+    font-size: clamp(4px, 1.65vw, 9px);
+  }
+
+  .matrix-wrap {
+    width: min(100%, 560px);
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="wrap">
+
+  <header>
+    <h1>MNIST IDX / ubyte 文件读取器</h1>
+    <p>
+      在浏览器中读取 MNIST 图片与标签文件，
+      查看单张 28×28 灰度图、标签及像素矩阵。
+      文件只在本地浏览器处理，不会上传。
+    </p>
+  </header>
+
+  <!-- 第一部分：选择数据文件 -->
+  <section class="panel">
+
+    <h2>1. 选择数据文件</h2>
+
+    <div class="uploads">
+
+      <div class="drop">
+        <label for="imagesFile">
+          图片文件（train-images 或 t10k-images）
+        </label>
+
+        <input
+          id="imagesFile"
+          type="file"
+          accept=".ubyte,.gz,.idx,*/*"
+        >
+
+        <div class="hint">
+          支持未压缩 IDX3 文件，以及 .gz 压缩文件。
+        </div>
+      </div>
+
+      <div class="drop">
+        <label for="labelsFile">
+          标签文件（train-labels 或 t10k-labels）
+        </label>
+
+        <input
+          id="labelsFile"
+          type="file"
+          accept=".ubyte,.gz,.idx,*/*"
+        >
+
+        <div class="hint">
+          支持未压缩 IDX1 文件，以及 .gz 压缩文件。
+        </div>
+      </div>
+
+    </div>
+
+    <div id="status" class="status">
+      请先选择一份图片文件和对应的标签文件。
+    </div>
+
+  </section>
+
+  <!-- 第二部分：查看样本 -->
+  <section class="panel">
+
+    <h2>2. 查看样本</h2>
+
+    <div class="viewer">
+
+      <div class="imagebox">
+
+        <canvas id="canvas" width="280" height="280"></canvas>
+
+        <div class="digit-label" id="digitLabel">
+          标签：—
+        </div>
+
+        <div class="muted" id="sampleMeta">
+          尚未加载数据
+        </div>
+
+      </div>
+
+      <div>
+
+        <div class="controls">
+
+          <button id="prev" class="secondary" disabled>
+            上一张
+          </button>
+
+          <button id="next" disabled>
+            下一张
+          </button>
+
+          <label for="indexInput">
+            样本索引
+          </label>
+
+          <input
+            id="indexInput"
+            type="number"
+            min="0"
+            value="0"
+            disabled
+          >
+
+          <button id="go" class="secondary" disabled>
+            跳转
+          </button>
+
+        </div>
+
+        <div>
+          <input
+            id="indexRange"
+            type="range"
+            min="0"
+            max="0"
+            value="0"
+            disabled
+          >
+        </div>
+
+        <div class="stats">
+
+          <div class="stat">
+            <span class="muted">图片总数</span>
+            <b id="countStat">—</b>
+          </div>
+
+          <div class="stat">
+            <span class="muted">图片尺寸</span>
+            <b id="sizeStat">—</b>
+          </div>
+
+          <div class="stat">
+            <span class="muted">当前像素值</span>
+            <b id="pixelStat">—</b>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- 像素矩阵 -->
+    <div class="matrix-heading">
+
+      <h3>当前图片的完整像素矩阵（28 × 28）</h3>
+
+      <button
+        id="toggleMatrixBg"
+        class="secondary matrix-toggle"
+        type="button"
+        aria-pressed="true"
+      >
+        隐藏底色
+      </button>
+
+    </div>
+
+    <p class="muted">
+      0 为纯白色，1～253 逐渐加深，254 为纯黑色。
+      每个格子均为正方形，矩阵完整展示全部数值。
+    </p>
+
+    <div class="matrix-wrap">
+      <div id="matrix" class="matrix-grid"></div>
+    </div>
+
+  </section>
+
+  <p class="muted">
+    IDX 文件头说明：
+    图片文件 magic number = 2051（IDX3）；
+    标签文件 magic number = 2049（IDX1）。
+    图片像素按 uint8 读取，标签按 uint8 读取。
+  </p>
+
+</div>
+
+<script>
+
+// ================================
+// 1. 全局变量
+// ================================
+
+const $ = id => document.getElementById(id);
+
+let imageData = null;
+let labelData = null;
+
+let currentIndex = 0;
+
+// 是否显示矩阵灰度底色
+let showMatrixBg = true;
+
+
+// ================================
+// 2. 读取文件
+// ================================
+
+async function readFile(file) {
+
+  let buffer = await file.arrayBuffer();
+
+  // 如果是 gzip 文件，则先解压
+  if (file.name.toLowerCase().endsWith('.gz')) {
+
+    if (!('DecompressionStream' in window)) {
+      throw new Error(
+        '当前浏览器不支持 gzip 解压，请先将 .gz 文件解压为 .ubyte 再读取。'
+      );
+    }
+
+    const stream = new Blob([buffer])
+      .stream()
+      .pipeThrough(new DecompressionStream('gzip'));
+
+    buffer = await new Response(stream).arrayBuffer();
+  }
+
+  return new DataView(buffer);
+}
+
+
+// ================================
+// 3. 解析图片文件 IDX3
+// ================================
+
+async function parseImages(file) {
+
+  const view = await readFile(file);
+
+  if (view.byteLength < 16) {
+    throw new Error('图片文件太短，不是有效的 IDX3 文件。');
+  }
+
+  const magic = view.getInt32(0, false);
+  const count = view.getInt32(4, false);
+  const rows = view.getInt32(8, false);
+  const cols = view.getInt32(12, false);
+
+  if (magic !== 2051) {
+    throw new Error(
+      `图片文件 magic number 应为 2051，实际为 ${magic}。请确认选择的是 images 文件。`
+    );
+  }
+
+  const expected = 16 + count * rows * cols;
+
+  if (view.byteLength < expected) {
+    throw new Error(
+      `图片数据不完整：预期至少 ${expected} 字节，实际 ${view.byteLength} 字节。`
+    );
+  }
+
+  return {
+    count,
+    rows,
+    cols,
+    pixels: new Uint8Array(
+      view.buffer,
+      view.byteOffset + 16,
+      count * rows * cols
+    )
+  };
+}
+
+
+// ================================
+// 4. 解析标签文件 IDX1
+// ================================
+
+async function parseLabels(file) {
+
+  const view = await readFile(file);
+
+  if (view.byteLength < 8) {
+    throw new Error('标签文件太短，不是有效的 IDX1 文件。');
+  }
+
+  const magic = view.getInt32(0, false);
+  const count = view.getInt32(4, false);
+
+  if (magic !== 2049) {
+    throw new Error(
+      `标签文件 magic number 应为 2049，实际为 ${magic}。请确认选择的是 labels 文件。`
+    );
+  }
+
+  if (view.byteLength < 8 + count) {
+    throw new Error('标签数据不完整。');
+  }
+
+  return {
+    count,
+    labels: new Uint8Array(
+      view.buffer,
+      view.byteOffset + 8,
+      count
+    )
+  };
+}
+
+
+// ================================
+// 5. 状态提示
+// ================================
+
+function setStatus(message, type = '') {
+
+  $('status').textContent = message;
+
+  $('status').className = 'status ' + type;
+}
+
+
+// ================================
+// 6. 灰度颜色映射
+// ================================
+
+function getGrayColor(value) {
+
+  // 限制像素值范围为 0~254
+  const v = Math.min(Math.max(value, 0), 254);
+
+  // 0 = 255（白色）
+  // 254 = 0（黑色）
+  const gray = Math.round(255 - v * 255 / 254);
+
+  return gray;
+}
+
+
+// ================================
+// 7. 渲染当前图片和像素矩阵
+// ================================
+
+function render() {
+
+  if (!imageData) return;
+
+  const {
+    rows,
+    cols,
+    pixels,
+    count
+  } = imageData;
+
+  // 当前图片在整个像素数组中的起始位置
+  const start = currentIndex * rows * cols;
+
+  // 截取当前图片的所有像素
+  const sample = pixels.subarray(
+    start,
+    start + rows * cols
+  );
+
+
+  // ------------------------------
+  // 7.1 渲染左侧灰度图片
+  // ------------------------------
+
+  const canvas = $('canvas');
+
+  const ctx = canvas.getContext('2d');
+
+  const image = ctx.createImageData(cols, rows);
+
+  for (let i = 0; i < sample.length; i++) {
+
+    const v = sample[i];
+
+    const gray = getGrayColor(v);
+
+    const p = i * 4;
+
+    image.data[p] = gray;
+    image.data[p + 1] = gray;
+    image.data[p + 2] = gray;
+    image.data[p + 3] = 255;
+  }
+
+  const temp = document.createElement('canvas');
+
+  temp.width = cols;
+  temp.height = rows;
+
+  temp.getContext('2d').putImageData(image, 0, 0);
+
+  ctx.imageSmoothingEnabled = false;
+
+  ctx.clearRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+  ctx.drawImage(
+    temp,
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+
+  // ------------------------------
+  // 7.2 更新样本信息
+  // ------------------------------
+
+  $('digitLabel').textContent = labelData
+    ? `标签：${labelData.labels[currentIndex]}`
+    : '标签：未加载';
+
+  $('sampleMeta').textContent =
+    `第 ${currentIndex + 1} / ${count} 张`;
+
+  $('countStat').textContent =
+    count.toLocaleString();
+
+  $('sizeStat').textContent =
+    `${rows} × ${cols}`;
+
+  $('pixelStat').textContent =
+    `${sample[0]}（左上角）`;
+
+  $('indexInput').value = currentIndex;
+  $('indexInput').max = count - 1;
+
+  $('indexRange').value = currentIndex;
+  $('indexRange').max = count - 1;
+
+  $('prev').disabled = currentIndex === 0;
+
+  $('next').disabled =
+    currentIndex >= count - 1;
+
+
+  // ------------------------------
+  // 7.3 渲染像素矩阵
+  // ------------------------------
+
+  let cells = '';
+
+  for (let i = 0; i < sample.length; i++) {
+
+    const v = sample[i];
+
+    // 灰度颜色映射
+    const gray = getGrayColor(v);
+
+    // 深色底色使用白色文字，浅色底色使用深色文字
+    const textColor = gray < 145
+      ? '#ffffff'
+      : '#182230';
+
+    // 是否显示灰度底色
+    const bgStyle = showMatrixBg
+      ? `background-color:rgb(${gray},${gray},${gray});color:${textColor};`
+      : '';
+
+    cells += `
+      <div
+        class="pixel-cell ${showMatrixBg ? '' : 'no-bg'}"
+        style="${bgStyle}"
+        title="像素值：${v}"
+      >${v}</div>
+    `;
+  }
+
+  $('matrix').innerHTML = cells;
+}
+
+
+// ================================
+// 8. 启用控制按钮
+// ================================
+
+function enableControls() {
+
+  for (const id of [
+    'prev',
+    'next',
+    'go',
+    'indexInput',
+    'indexRange'
+  ]) {
+
+    $(id).disabled = false;
+  }
+}
+
+
+// ================================
+// 9. 加载图片和标签文件
+// ================================
+
+async function loadFiles() {
+
+  const imageFile = $('imagesFile').files[0];
+
+  const labelFile = $('labelsFile').files[0];
+
+  if (!imageFile || !labelFile) return;
+
+  try {
+
+    setStatus('正在读取并解析文件…');
+
+    const [images, labels] = await Promise.all([
+      parseImages(imageFile),
+      parseLabels(labelFile)
+    ]);
+
+    // 检查图片数量与标签数量是否一致
+    if (images.count !== labels.count) {
+
+      throw new Error(
+        `图片数量（${images.count}）与标签数量（${labels.count}）不一致。请使用同一数据集的 images 和 labels 文件。`
+      );
+    }
+
+    imageData = images;
+    labelData = labels;
+
+    currentIndex = 0;
+
+    enableControls();
+
+    render();
+
+    setStatus(
+      `读取成功：${images.count.toLocaleString()} 张图片，${images.rows}×${images.cols} 像素；图片与标签数量匹配。`,
+      'ok'
+    );
+
+  } catch (error) {
+
+    imageData = null;
+    labelData = null;
+
+    setStatus(error.message, 'err');
+  }
+}
+
+
+// ================================
+// 10. 矩阵底色显示/隐藏按钮
+// ================================
+
+$('toggleMatrixBg').addEventListener('click', () => {
+
+  // 切换底色状态
+  showMatrixBg = !showMatrixBg;
+
+  // 更新按钮文字
+  $('toggleMatrixBg').textContent =
+    showMatrixBg ? '隐藏底色' : '显示底色';
+
+  // 更新按钮状态
+  $('toggleMatrixBg').setAttribute(
+    'aria-pressed',
+    String(showMatrixBg)
+  );
+
+  // 重新渲染矩阵
+  if (imageData) {
+    render();
+  }
+});
+
+
+// ================================
+// 11. 文件选择事件
+// ================================
+
+$('imagesFile').addEventListener(
+  'change',
+  loadFiles
+);
+
+$('labelsFile').addEventListener(
+  'change',
+  loadFiles
+);
+
+
+// ================================
+// 12. 上一张 / 下一张
+// ================================
+
+$('prev').addEventListener('click', () => {
+
+  if (currentIndex > 0) {
+
+    currentIndex--;
+
+    render();
+  }
+});
+
+
+$('next').addEventListener('click', () => {
+
+  if (
+    imageData &&
+    currentIndex < imageData.count - 1
+  ) {
+
+    currentIndex++;
+
+    render();
+  }
+});
+
+
+// ================================
+// 13. 根据索引跳转
+// ================================
+
+$('go').addEventListener('click', () => {
+
+  if (!imageData) return;
+
+  const n = Number.parseInt(
+    $('indexInput').value,
+    10
+  );
+
+  if (
+    !Number.isInteger(n) ||
+    n < 0 ||
+    n >= imageData.count
+  ) {
+
+    setStatus(
+      `索引必须在 0 到 ${imageData.count - 1} 之间。`,
+      'err'
+    );
+
+    return;
+  }
+
+  currentIndex = n;
+
+  render();
+});
+
+
+// 输入框按 Enter 也可以跳转
+$('indexInput').addEventListener('keydown', e => {
+
+  if (e.key === 'Enter') {
+    $('go').click();
+  }
+});
+
+
+// ================================
+// 14. 滑块切换样本
+// ================================
+
+$('indexRange').addEventListener('input', e => {
+
+  currentIndex = Number(e.target.value);
+
+  render();
+});
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,982 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LeNet-5 手写数字识别</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 30px 16px;
+    background: #f3f5f9;
+    color: #1e293b;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.container {
+    max-width: 1050px;
+    margin: auto;
+}
+
+.header {
+    margin-bottom: 25px;
+}
+
+.header h1 {
+    font-size: 28px;
+    margin: 0 0 8px;
+}
+
+.header p {
+    color: #64748b;
+    font-size: 14px;
+}
+
+.panel {
+    background: white;
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 3px 15px rgba(0,0,0,.04);
+}
+
+.panel h2 {
+    font-size: 17px;
+    margin: 0 0 18px;
+}
+
+.main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.canvas-wrap {
+    background: #fff;
+    border: 1px solid #dce2ea;
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+}
+
+#drawCanvas {
+    width: 100%;
+    max-width: 340px;
+    aspect-ratio: 1;
+    display: block;
+    cursor: crosshair;
+    touch-action: none;
+}
+
+.actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+button {
+    border: none;
+    border-radius: 8px;
+    padding: 11px 20px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: .2s;
+}
+
+button:hover {
+    opacity: .85;
+}
+
+.primary {
+    background: #2563eb;
+    color: white;
+    flex: 1;
+}
+
+.secondary {
+    background: #e9eef5;
+    color: #334155;
+}
+
+.result-box {
+    min-height: 220px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #f8fafc;
+    border-radius: 10px;
+}
+
+.result-number {
+    font-size: 100px;
+    line-height: 1.2;
+    font-weight: 700;
+    color: #2563eb;
+}
+
+.result-label {
+    color: #64748b;
+    font-size: 14px;
+}
+
+.confidence {
+    font-size: 15px;
+    margin-top: 10px;
+    font-weight: 600;
+}
+
+.prob-item {
+    display: grid;
+    grid-template-columns: 25px 1fr 55px;
+    gap: 10px;
+    align-items: center;
+    margin: 13px 0;
+    font-size: 13px;
+}
+
+.bar-bg {
+    background: #e8edf4;
+    height: 10px;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.bar {
+    height: 100%;
+    width: 0%;
+    background: #3b82f6;
+    border-radius: 10px;
+    transition: width .3s;
+}
+
+.prob-value {
+    text-align: right;
+    color: #64748b;
+}
+
+.preview-grid {
+    display: flex;
+    gap: 25px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+#previewCanvas {
+    width: 168px;
+    height: 168px;
+    image-rendering: pixelated;
+    border: 1px solid #cbd5e1;
+    background: white;
+}
+
+.info {
+    font-size: 13px;
+    line-height: 2;
+    color: #64748b;
+}
+
+.status {
+    padding: 12px;
+    border-radius: 8px;
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 13px;
+    margin-bottom: 15px;
+}
+
+@media(max-width:700px) {
+    .main-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .panel {
+        padding: 18px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="header">
+        <h1>LeNet-5 手写数字识别</h1>
+        <p>PyTorch Trained Model · JavaScript Inference · MNIST</p>
+    </div>
+
+    <div class="status" id="status">
+        正在加载模型权重...
+    </div>
+
+    <div class="main-grid">
+
+        <!-- 左侧：手写区域 -->
+        <div class="panel">
+
+            <h2>01 / 手写数字输入</h2>
+
+            <div class="canvas-wrap">
+                <canvas id="drawCanvas"
+                        width="280"
+                        height="280"></canvas>
+            </div>
+
+            <div class="actions">
+                <button class="secondary" onclick="clearCanvas()">
+                    清空
+                </button>
+
+                <button class="primary" onclick="recognize()">
+                    开始识别
+                </button>
+            </div>
+
+        </div>
+
+        <!-- 右侧：预测结果 -->
+        <div class="panel">
+
+            <h2>02 / 模型预测结果</h2>
+
+            <div class="result-box">
+
+                <div class="result-label">预测数字</div>
+
+                <div class="result-number" id="resultNumber">
+                    -
+                </div>
+
+                <div class="confidence" id="confidence">
+                    等待输入
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- 概率分布 -->
+    <div class="panel">
+
+        <h2>03 / 分类概率分布</h2>
+
+        <div id="probabilities"></div>
+
+    </div>
+
+    <!-- 图像预处理 -->
+    <div class="panel">
+
+        <h2>04 / 输入图像预处理</h2>
+
+        <div class="preview-grid">
+
+            <canvas id="previewCanvas"
+                    width="28"
+                    height="28"></canvas>
+
+            <div class="info">
+                <div>输入尺寸：28 × 28</div>
+                <div>输入通道：1（Grayscale）</div>
+                <div>输入范围：0 ～ 1</div>
+                <div>背景颜色：0（黑色）</div>
+                <div>数字颜色：接近 1（白色）</div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- 模型信息 -->
+    <div class="panel">
+
+        <h2>05 / LeNet-5 网络结构</h2>
+
+        <div class="info">
+            Input：1 × 28 × 28<br>
+            C1：6 × 28 × 28<br>
+            S2：6 × 14 × 14<br>
+            C3：16 × 10 × 10<br>
+            S4：16 × 5 × 5<br>
+            C5：120 × 1 × 1<br>
+            F6：120 → 84<br>
+            Output：84 → 10
+        </div>
+
+    </div>
+
+</div>
+
+<!-- 加载训练好的 JavaScript 权重 -->
+<script src="./weights.js"></script>
+
+<script>
+
+// =====================================================
+// 1. 全局配置
+// =====================================================
+
+const drawCanvas = document.getElementById("drawCanvas");
+const ctx = drawCanvas.getContext("2d");
+
+const previewCanvas = document.getElementById("previewCanvas");
+const previewCtx = previewCanvas.getContext("2d");
+
+let drawing = false;
+let modelReady = false;
+
+const W = window.MODEL_WEIGHTS;
+
+
+// =====================================================
+// 2. 初始化画布
+// =====================================================
+
+function initCanvas() {
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, 280, 280);
+
+    ctx.lineWidth = 20;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#000000";
+}
+
+initCanvas();
+
+
+// =====================================================
+// 3. 鼠标和触屏绘制
+// =====================================================
+
+function getPosition(e) {
+
+    const rect = drawCanvas.getBoundingClientRect();
+
+    return {
+        x: (e.clientX - rect.left) * 280 / rect.width,
+        y: (e.clientY - rect.top) * 280 / rect.height
+    };
+}
+
+drawCanvas.addEventListener("pointerdown", e => {
+
+    drawing = true;
+
+    drawCanvas.setPointerCapture(e.pointerId);
+
+    const p = getPosition(e);
+
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x + 0.1, p.y + 0.1);
+    ctx.stroke();
+});
+
+drawCanvas.addEventListener("pointermove", e => {
+
+    if (!drawing) return;
+
+    const p = getPosition(e);
+
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+});
+
+function stopDrawing() {
+    drawing = false;
+    ctx.beginPath();
+}
+
+drawCanvas.addEventListener("pointerup", stopDrawing);
+drawCanvas.addEventListener("pointercancel", stopDrawing);
+
+
+// =====================================================
+// 4. 清空画布
+// =====================================================
+
+function clearCanvas() {
+
+    initCanvas();
+
+    document.getElementById("resultNumber").innerText = "-";
+    document.getElementById("confidence").innerText = "等待输入";
+
+    document.getElementById("probabilities").innerHTML = "";
+
+    previewCtx.fillStyle = "#FFFFFF";
+    previewCtx.fillRect(0, 0, 28, 28);
+}
+
+
+// =====================================================
+// 5. 图像预处理
+// =====================================================
+
+function preprocess() {
+
+    const image = ctx.getImageData(0, 0, 280, 280);
+
+    const pixels = image.data;
+
+    let minX = 280;
+    let minY = 280;
+    let maxX = -1;
+    let maxY = -1;
+
+    // 找到数字边界
+    for (let y = 0; y < 280; y++) {
+
+        for (let x = 0; x < 280; x++) {
+
+            const i = (y * 280 + x) * 4;
+
+            // 黑色笔迹转换为白色数字强度
+            const value = 255 - pixels[i];
+
+            if (value > 30) {
+
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
+            }
+        }
+    }
+
+    if (maxX < 0) {
+        throw new Error("请先在画布上写一个数字！");
+    }
+
+    // 裁剪边界
+    const width = maxX - minX + 1;
+    const height = maxY - minY + 1;
+
+    // 保持比例，缩放至最大20×20
+    const scale = 20 / Math.max(width, height);
+
+    const newWidth = Math.max(1, Math.round(width * scale));
+    const newHeight = Math.max(1, Math.round(height * scale));
+
+    const tempCanvas = document.createElement("canvas");
+
+    tempCanvas.width = 28;
+    tempCanvas.height = 28;
+
+    const tempCtx = tempCanvas.getContext("2d");
+
+    tempCtx.fillStyle = "#000000";
+    tempCtx.fillRect(0, 0, 28, 28);
+
+    const offsetX = Math.floor((28 - newWidth) / 2);
+    const offsetY = Math.floor((28 - newHeight) / 2);
+
+    // 将黑底白字图像缩放至28×28
+    const sourceCanvas = document.createElement("canvas");
+
+    sourceCanvas.width = width;
+    sourceCanvas.height = height;
+
+    const sourceCtx = sourceCanvas.getContext("2d");
+
+    sourceCtx.drawImage(
+        drawCanvas,
+        minX, minY, width, height,
+        0, 0, width, height
+    );
+
+    const sourceData = sourceCtx.getImageData(
+        0, 0, width, height
+    );
+
+    const inverted = sourceCtx.createImageData(width, height);
+
+    for (let i = 0; i < sourceData.data.length; i += 4) {
+
+        const v = 255 - sourceData.data[i];
+
+        inverted.data[i] = v;
+        inverted.data[i + 1] = v;
+        inverted.data[i + 2] = v;
+        inverted.data[i + 3] = 255;
+    }
+
+    sourceCtx.putImageData(inverted, 0, 0);
+
+    tempCtx.imageSmoothingEnabled = true;
+    tempCtx.imageSmoothingQuality = "high";
+
+    tempCtx.drawImage(
+        sourceCanvas,
+        0, 0, width, height,
+        offsetX, offsetY, newWidth, newHeight
+    );
+
+    const result = tempCtx.getImageData(0, 0, 28, 28);
+
+    // 转换为 PyTorch Tensor 对应的 0~1 数组
+    const input = [];
+
+    for (let i = 0; i < result.data.length; i += 4) {
+        input.push(result.data[i] / 255);
+    }
+
+    // 显示28×28预处理图像
+    previewCtx.putImageData(result, 0, 0);
+
+    return input;
+}
+
+
+// =====================================================
+// 6. 基础数学运算
+// =====================================================
+
+function relu(x) {
+    return Math.max(0, x);
+}
+
+
+// =====================================================
+// 7. 二维卷积
+// 输入：[inChannels][height][width]
+// 权重：[outChannels][inChannels][kernel][kernel]
+// =====================================================
+
+function conv2d(input, weight, bias, padding = 0) {
+
+    const inChannels = input.length;
+
+    const outChannels = weight.length;
+
+    const inputH = input[0].length;
+    const inputW = input[0][0].length;
+
+    const kernel = weight[0][0].length;
+
+    const outputH = inputH + 2 * padding - kernel + 1;
+    const outputW = inputW + 2 * padding - kernel + 1;
+
+    const output = [];
+
+    for (let oc = 0; oc < outChannels; oc++) {
+
+        const feature = [];
+
+        for (let y = 0; y < outputH; y++) {
+
+            const row = [];
+
+            for (let x = 0; x < outputW; x++) {
+
+                let sum = bias[oc];
+
+                for (let ic = 0; ic < inChannels; ic++) {
+
+                    for (let ky = 0; ky < kernel; ky++) {
+
+                        for (let kx = 0; kx < kernel; kx++) {
+
+                            const iy = y + ky - padding;
+                            const ix = x + kx - padding;
+
+                            if (
+                                iy >= 0 && iy < inputH &&
+                                ix >= 0 && ix < inputW
+                            ) {
+
+                                sum += input[ic][iy][ix] *
+                                    weight[oc][ic][ky][kx];
+                            }
+                        }
+                    }
+                }
+
+                row.push(sum);
+            }
+
+            feature.push(row);
+        }
+
+        output.push(feature);
+    }
+
+    return output;
+}
+
+
+// =====================================================
+// 8. ReLU
+// =====================================================
+
+function relu3d(input) {
+
+    return input.map(channel =>
+        channel.map(row =>
+            row.map(relu)
+        )
+    );
+}
+
+
+// =====================================================
+// 9. 平均池化 2×2，Stride=2
+// 对应 PyTorch AvgPool2d(2,2)
+// =====================================================
+
+function avgPool2d(input) {
+
+    const output = [];
+
+    for (let c = 0; c < input.length; c++) {
+
+        const channel = input[c];
+
+        const h = channel.length;
+        const w = channel[0].length;
+
+        const result = [];
+
+        for (let y = 0; y < h; y += 2) {
+
+            const row = [];
+
+            for (let x = 0; x < w; x += 2) {
+
+                const sum =
+                    channel[y][x] +
+                    channel[y][x + 1] +
+                    channel[y + 1][x] +
+                    channel[y + 1][x + 1];
+
+                row.push(sum / 4);
+            }
+
+            result.push(row);
+        }
+
+        output.push(result);
+    }
+
+    return output;
+}
+
+
+// =====================================================
+// 10. 展平
+// PyTorch Flatten 对 NCHW 数据采用通道优先顺序
+// =====================================================
+
+function flatten(input) {
+
+    const result = [];
+
+    for (const channel of input) {
+
+        for (const row of channel) {
+
+            for (const value of row) {
+                result.push(value);
+            }
+        }
+    }
+
+    return result;
+}
+
+
+// =====================================================
+// 11. 全连接层
+// weight：[out_features][in_features]
+// =====================================================
+
+function linear(input, weight, bias) {
+
+    const output = [];
+
+    for (let i = 0; i < weight.length; i++) {
+
+        let sum = bias[i];
+
+        for (let j = 0; j < input.length; j++) {
+
+            sum += input[j] * weight[i][j];
+        }
+
+        output.push(sum);
+    }
+
+    return output;
+}
+
+
+// =====================================================
+// 12. Softmax
+// =====================================================
+
+function softmax(logits) {
+
+    const max = Math.max(...logits);
+
+    const exps = logits.map(x => Math.exp(x - max));
+
+    const sum = exps.reduce((a, b) => a + b, 0);
+
+    return exps.map(x => x / sum);
+}
+
+
+// =====================================================
+// 13. LeNet-5 前向传播
+// 严格按照你的 PyTorch MyLeNet5 结构
+// =====================================================
+
+function predict(input) {
+
+    if (!modelReady) {
+        throw new Error("模型权重尚未加载！");
+    }
+
+    // Input: [1,28,28]
+    let x = [Array.from(
+        { length: 28 },
+        (_, y) => input.slice(y * 28, (y + 1) * 28)
+    )];
+
+    // C1: Conv2d(1,6,5,padding=2) + ReLU
+    x = conv2d(
+        x,
+        W["c1.weight"],
+        W["c1.bias"],
+        2
+    );
+
+    x = relu3d(x);
+
+    // S2: AvgPool2d(2,2)
+    x = avgPool2d(x);
+
+    // C3: Conv2d(6,16,5) + ReLU
+    x = conv2d(
+        x,
+        W["c3.weight"],
+        W["c3.bias"],
+        0
+    );
+
+    x = relu3d(x);
+
+    // S4: AvgPool2d(2,2)
+    x = avgPool2d(x);
+
+    // C5: Conv2d(16,120,5) + ReLU
+    x = conv2d(
+        x,
+        W["c5.weight"],
+        W["c5.bias"],
+        0
+    );
+
+    x = relu3d(x);
+
+    // Flatten: 120
+    x = flatten(x);
+
+    // F6: Linear(120,84) + ReLU
+    x = linear(
+        x,
+        W["f6.weight"],
+        W["f6.bias"]
+    );
+
+    x = x.map(relu);
+
+    // Output: Linear(84,10)
+    x = linear(
+        x,
+        W["output.weight"],
+        W["output.bias"]
+    );
+
+    // Softmax
+    return softmax(x);
+}
+
+
+// =====================================================
+// 14. 显示预测概率
+// =====================================================
+
+function displayResult(probabilities) {
+
+    const maxIndex = probabilities.indexOf(
+        Math.max(...probabilities)
+    );
+
+    const confidence = probabilities[maxIndex];
+
+    document.getElementById("resultNumber").innerText =
+        maxIndex;
+
+    document.getElementById("confidence").innerText =
+        "置信概率：" + (confidence * 100).toFixed(2) + "%";
+
+    const container = document.getElementById("probabilities");
+
+    container.innerHTML = "";
+
+    probabilities.forEach((p, i) => {
+
+        const item = document.createElement("div");
+
+        item.className = "prob-item";
+
+        item.innerHTML = `
+            <strong>${i}</strong>
+            <div class="bar-bg">
+                <div class="bar"
+                     style="width:${p * 100}%;
+                     background:${i === maxIndex ? '#16a34a' : '#3b82f6'}">
+                </div>
+            </div>
+            <div class="prob-value">
+                ${(p * 100).toFixed(2)}%
+            </div>
+        `;
+
+        container.appendChild(item);
+    });
+}
+
+
+// =====================================================
+// 15. 执行识别
+// =====================================================
+
+function recognize() {
+
+    try {
+
+        const input = preprocess();
+
+        const probabilities = predict(input);
+
+        displayResult(probabilities);
+
+    } catch (error) {
+
+        alert(error.message);
+
+        console.error(error);
+    }
+}
+
+
+// =====================================================
+// 16. 模型权重检查
+// =====================================================
+
+function loadModel() {
+
+    const requiredKeys = [
+        "c1.weight",
+        "c1.bias",
+        "c3.weight",
+        "c3.bias",
+        "c5.weight",
+        "c5.bias",
+        "f6.weight",
+        "f6.bias",
+        "output.weight",
+        "output.bias"
+    ];
+
+    if (!W) {
+
+        document.getElementById("status").innerText =
+            "模型加载失败：没有找到 weights.js 中的 MODEL_WEIGHTS";
+
+        return;
+    }
+
+    for (const key of requiredKeys) {
+
+        if (!(key in W)) {
+
+            document.getElementById("status").innerText =
+                "模型权重缺失：" + key;
+
+            return;
+        }
+    }
+
+    // 检查主要权重形状
+    const expectedShapes = {
+        "c1.weight": [6, 1, 5, 5],
+        "c3.weight": [16, 6, 5, 5],
+        "c5.weight": [120, 16, 5, 5],
+        "f6.weight": [84, 120],
+        "output.weight": [10, 84]
+    };
+
+    function shapeOf(data) {
+
+        const shape = [];
+
+        while (Array.isArray(data)) {
+
+            shape.push(data.length);
+
+            data = data[0];
+        }
+
+        return shape;
+    }
+
+    for (const key in expectedShapes) {
+
+        const actual = shapeOf(W[key]);
+
+        if (
+            JSON.stringify(actual) !==
+            JSON.stringify(expectedShapes[key])
+        ) {
+
+            document.getElementById("status").innerText =
+                "模型权重形状不匹配：" + key +
+                "，实际：" + actual.join("×");
+
+            return;
+        }
+    }
+
+    modelReady = true;
+
+    document.getElementById("status").innerText =
+        "模型加载成功！MyLeNet5 已就绪，可以开始手写识别。";
+}
+
+
+// =====================================================
+// 17. 页面初始化
+// =====================================================
+
+loadModel();
+
+</script>
+
+</body>
+</html>
