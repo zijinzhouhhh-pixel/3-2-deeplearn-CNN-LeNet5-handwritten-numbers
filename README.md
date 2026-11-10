@@ -62,7 +62,3 @@ ubyte 图片数据是怎么存储的？
 | flatten | 展平     | x          | 只是维度变换                  |
 | f6      | 全连接层 | √          | 引入非线性                    |
 | output  | 输出层   | x          | 输出 raw logits, 不能追加ReLU |
-
-## B-基础资料来源
-
-## C-文件说明output
